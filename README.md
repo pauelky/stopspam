@@ -15,6 +15,7 @@
 - `/autoreact on`, `/autoreact off`, `/autoreact status`.
 - `/say текст` одно сообщение в текущий чат.
 - `/saytest 3 текст` только в Saved Messages.
+- `/comands` или `/commands` список всех команд в Saved Messages.
 - SQLite, файл логов, Docker.
 
 Все команды выполняются только от `OWNER_ID`.
@@ -102,6 +103,15 @@ docker logs -f telegram-chat-cleaner
 /read off
 /read status
 ```
+
+Список команд:
+
+```text
+/comands
+/commands
+```
+
+Эта команда работает в Saved Messages и выводит все доступные команды userbot.
 
 Реакции:
 

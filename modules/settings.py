@@ -13,6 +13,41 @@ from database import Database
 log = logging.getLogger(__name__)
 SAY_RE = re.compile(r"^/say\s+(.+)$", re.IGNORECASE | re.DOTALL)
 SAYTEST_RE = re.compile(r"^/saytest\s+(\d+)\s+(.+)$", re.IGNORECASE | re.DOTALL)
+COMMANDS_TEXT = """Команды userbot:
+
+Мьюты:
+/mute 10 - замьютить пользователя на 10 минут, ответом на сообщение
+/mute 10 причина - замьютить с причиной
+/mute 10 --clean причина - замьютить и удалить последние сообщения пользователя
+/unmute - снять мьют, ответом на сообщение
+/mutes - показать активные мьюты в текущем чате
+
+Личные сообщения:
+/muteme 10 - замьютить текущего собеседника в личке
+/unmuteme - снять мьют с текущего собеседника
+
+Авточтение:
+/read on - включить автопрочтение
+/read off - выключить автопрочтение
+/read status - показать статус автопрочтения
+/readblacklist add - добавить текущий чат или собеседника в blacklist
+/readblacklist remove - убрать текущий чат или собеседника из blacklist
+/readblacklist list - показать blacklist
+
+Реакции:
+/react 👌 - поставить реакцию ответом на сообщение
+/autoreact on - включить реакцию 👌 на сообщения длиннее 40 символов
+/autoreact off - выключить авторакцию в текущем чате
+/autoreact status - показать статус авторакции
+
+Сообщения:
+/say текст - отправить одно сообщение в текущий чат
+/saytest 3 текст - тест до 3 сообщений только в Saved Messages
+
+Справка:
+/comands - показать этот список в Saved Messages
+/commands - то же самое
+"""
 
 
 def _is_owner(event: events.NewMessage.Event, config: Config) -> bool:
@@ -62,7 +97,23 @@ async def handle_saytest(event: events.NewMessage.Event, client: TelegramClient,
     db.add_log("saytest", {"count": count, "length": len(text)})
 
 
+async def handle_commands(event: events.NewMessage.Event, config: Config) -> None:
+    if not _is_owner(event, config):
+        return
+    text = (event.raw_text or "").strip().lower()
+    if text not in {"/comands", "/commands"}:
+        return
+    if not event.is_private or int(event.chat_id) != config.owner_id:
+        await event.respond("Команда /comands работает только в Saved Messages.")
+        return
+    await event.respond(COMMANDS_TEXT)
+
+
 def register_settings(client: TelegramClient, db: Database, config: Config) -> None:
+    @client.on(events.NewMessage(pattern=r"^/(?:comands|commands)$"))
+    async def _commands(event: events.NewMessage.Event) -> None:
+        await handle_commands(event, config)
+
     @client.on(events.NewMessage(pattern=r"^/say(?:\s|$)"))
     async def _say(event: events.NewMessage.Event) -> None:
         await handle_say(event, db, config)
