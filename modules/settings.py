@@ -50,6 +50,18 @@ COMMANDS_TEXT = """Команды userbot:
 """
 
 
+COMMANDS_TEXT_SUFFIX = """
+
+Обновления:
+/autoreact on - включает реакцию 👌 на длинные входящие сообщения во всех чатах
+/autoreact off - выключает авторакции во всех чатах
+/say привет как дела 2 - отправить фразу 2 раза
+/say как ты 3 - отправить фразу 3 раза
+
+Для /say последнее число считается количеством повторов. Максимум 10.
+"""
+
+
 def _is_owner(event: events.NewMessage.Event, config: Config) -> bool:
     return event.sender_id == config.owner_id
 
@@ -61,6 +73,36 @@ async def handle_say(event: events.NewMessage.Event, db: Database, config: Confi
     if not match:
         return
     text = match.group(1).strip()
+    if text:
+        phrase = text
+        repeat_count = 1
+        parts = text.rsplit(maxsplit=1)
+        if len(parts) == 2 and parts[1].isdigit():
+            phrase = parts[0].strip()
+            repeat_count = int(parts[1])
+        if not phrase:
+            await event.respond("Использование: /say текст 2")
+            return
+        if repeat_count < 1 or repeat_count > 10:
+            await event.respond("Для /say можно указать от 1 до 10 повторов.")
+            return
+        try:
+            await event.delete()
+        except Exception:
+            log.debug("Could not delete /say command", exc_info=True)
+        for index in range(repeat_count):
+            await event.client.send_message(event.chat_id, phrase)
+            if index + 1 < repeat_count:
+                await asyncio.sleep(1)
+        db.add_log(
+            "say",
+            {
+                "chat_id": int(event.chat_id or 0),
+                "length": len(phrase),
+                "repeat_count": repeat_count,
+            },
+        )
+        return
     if not text:
         await event.respond("Использование: /say текст")
         return
@@ -106,7 +148,7 @@ async def handle_commands(event: events.NewMessage.Event, config: Config) -> Non
     if not event.is_private or int(event.chat_id) != config.owner_id:
         await event.respond("Команда /comands работает только в Saved Messages.")
         return
-    await event.respond(COMMANDS_TEXT)
+    await event.respond(COMMANDS_TEXT + COMMANDS_TEXT_SUFFIX)
 
 
 def register_settings(client: TelegramClient, db: Database, config: Config) -> None:

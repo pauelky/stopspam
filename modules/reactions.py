@@ -11,7 +11,8 @@ from database import Database, from_iso
 
 
 log = logging.getLogger(__name__)
-DEFAULT_REACTION = "👌"
+GLOBAL_AUTOREACT_ID = 0
+DEFAULT_REACTION = "\U0001F44C"
 DEFAULT_MIN_CHARS = 40
 DEFAULT_COOLDOWN_SECONDS = 30
 
@@ -39,6 +40,7 @@ async def _send_reaction(client: TelegramClient, chat_id: int, message_id: int, 
 async def handle_react_command(event: events.NewMessage.Event, client: TelegramClient, config: Config) -> None:
     if not _is_owner(event, config):
         return
+
     text = _message_text(event)
     if not text.startswith("/react"):
         return
@@ -71,35 +73,34 @@ async def handle_autoreact_command(event: events.NewMessage.Event, db: Database,
 
     parts = text.split()
     action = parts[1] if len(parts) > 1 else "status"
-    chat_id = int(event.chat_id)
 
     if action == "on":
         db.set_auto_reaction(
-            chat_id=chat_id,
+            chat_id=GLOBAL_AUTOREACT_ID,
             enabled=True,
             emoji=DEFAULT_REACTION,
             min_chars=DEFAULT_MIN_CHARS,
             cooldown_seconds=DEFAULT_COOLDOWN_SECONDS,
         )
         await event.respond(
-            f"OK. Авторакция включена в этом чате.\n"
-            f"Условие: сообщения длиннее {DEFAULT_MIN_CHARS} символов.\n"
+            "OK. Авторакция включена во всех чатах.\n"
+            f"Условие: входящие сообщения длиннее {DEFAULT_MIN_CHARS} символов.\n"
             f"Реакция: {DEFAULT_REACTION}."
         )
     elif action == "off":
-        row = db.get_auto_reaction(chat_id)
+        row = db.get_auto_reaction(GLOBAL_AUTOREACT_ID)
         emoji = row["emoji"] if row else DEFAULT_REACTION
         min_chars = int(row["min_chars"]) if row else DEFAULT_MIN_CHARS
         cooldown = int(row["cooldown_seconds"]) if row else DEFAULT_COOLDOWN_SECONDS
-        db.set_auto_reaction(chat_id, False, emoji, min_chars, cooldown)
-        await event.respond("OK. Авторакция выключена в этом чате.")
+        db.set_auto_reaction(GLOBAL_AUTOREACT_ID, False, emoji, min_chars, cooldown)
+        await event.respond("OK. Авторакция выключена во всех чатах.")
     elif action == "status":
-        row = db.get_auto_reaction(chat_id)
+        row = db.get_auto_reaction(GLOBAL_AUTOREACT_ID)
         if not row or not row["enabled"]:
-            await event.respond("Авторакция в этом чате: выключена.")
+            await event.respond("Авторакция во всех чатах: выключена.")
         else:
             await event.respond(
-                "Авторакция в этом чате: включена.\n"
+                "Авторакция во всех чатах: включена.\n"
                 f"Реакция: {row['emoji']}\n"
                 f"Минимум символов: {row['min_chars']}\n"
                 f"Cooldown: {row['cooldown_seconds']} сек."
@@ -116,7 +117,7 @@ async def handle_auto_reaction(event: events.NewMessage.Event, client: TelegramC
     if not text or text.startswith("/") or len(text) <= DEFAULT_MIN_CHARS:
         return
 
-    row = db.get_auto_reaction(int(event.chat_id))
+    row = db.get_auto_reaction(GLOBAL_AUTOREACT_ID)
     if not row or not row["enabled"]:
         return
 
@@ -133,7 +134,13 @@ async def handle_auto_reaction(event: events.NewMessage.Event, client: TelegramC
     emoji = row["emoji"]
     try:
         await _send_reaction(client, int(event.chat_id), event.message.id, emoji)
-        db.touch_auto_reaction(int(event.chat_id), int(event.sender_id), event.message.id, emoji)
+        db.touch_auto_reaction(
+            GLOBAL_AUTOREACT_ID,
+            int(event.chat_id),
+            int(event.sender_id),
+            event.message.id,
+            emoji,
+        )
         db.add_log(
             "auto_reaction",
             {

@@ -377,12 +377,19 @@ class Database:
             ).fetchone()
         return row
 
-    def touch_auto_reaction(self, chat_id: int, user_id: int, message_id: int, emoji: str) -> None:
+    def touch_auto_reaction(
+        self,
+        setting_chat_id: int,
+        chat_id: int,
+        user_id: int,
+        message_id: int,
+        emoji: str,
+    ) -> None:
         now = iso()
         with self.connect() as db:
             db.execute(
                 "UPDATE auto_reactions SET last_reacted_at = ? WHERE chat_id = ?",
-                (now, chat_id),
+                (now, setting_chat_id),
             )
             db.execute(
                 """

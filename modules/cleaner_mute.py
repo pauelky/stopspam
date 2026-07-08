@@ -4,6 +4,7 @@ import asyncio
 import logging
 import re
 from datetime import timedelta
+from html import escape
 
 from telethon import TelegramClient, events
 from telethon.errors import FloodWaitError, RPCError
@@ -144,6 +145,18 @@ async def handle_mute(event: events.NewMessage.Event, client: TelegramClient, db
         },
     )
     log.info("Muted user %s in chat %s for %s minutes", user_id, chat_id, minutes)
+
+    target_name = _name(sender, user_id)
+    first_message = (
+        f"{target_name}, вы замьючены на {minutes} мин.\n"
+        "Новые сообщения на время мьюта будут удаляться автоматически."
+    )
+    if clean:
+        first_message += f"\nУдалено старых сообщений: {cleaned}."
+    await event.respond(first_message)
+    await event.respond(f"Причина: <b>{escape(reason)}</b>", parse_mode="html")
+    await _delete_command(event, db)
+    return
 
     if clean:
         text = (
