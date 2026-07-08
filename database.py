@@ -107,6 +107,30 @@ class Database:
             )
             db.execute(
                 """
+                CREATE TABLE IF NOT EXISTS auto_reactions (
+                    chat_id INTEGER PRIMARY KEY,
+                    enabled INTEGER NOT NULL DEFAULT 0,
+                    emoji TEXT NOT NULL DEFAULT '👌',
+                    min_chars INTEGER NOT NULL DEFAULT 40,
+                    cooldown_seconds INTEGER NOT NULL DEFAULT 30,
+                    last_reacted_at TEXT
+                )
+                """
+            )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS reaction_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER,
+                    user_id INTEGER,
+                    message_id INTEGER,
+                    emoji TEXT,
+                    created_at TEXT
+                )
+                """
+            )
+            db.execute(
+                """
                 CREATE TABLE IF NOT EXISTS logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     action TEXT,
@@ -322,3 +346,48 @@ class Database:
                 "SELECT * FROM read_blacklist ORDER BY created_at DESC"
             ).fetchall()
         return list(rows)
+
+    def set_auto_reaction(
+        self,
+        chat_id: int,
+        enabled: bool,
+        emoji: str = "👌",
+        min_chars: int = 40,
+        cooldown_seconds: int = 30,
+    ) -> None:
+        with self.connect() as db:
+            db.execute(
+                """
+                INSERT INTO auto_reactions(chat_id, enabled, emoji, min_chars, cooldown_seconds)
+                VALUES(?, ?, ?, ?, ?)
+                ON CONFLICT(chat_id) DO UPDATE SET
+                    enabled = excluded.enabled,
+                    emoji = excluded.emoji,
+                    min_chars = excluded.min_chars,
+                    cooldown_seconds = excluded.cooldown_seconds
+                """,
+                (chat_id, int(enabled), emoji, min_chars, cooldown_seconds),
+            )
+
+    def get_auto_reaction(self, chat_id: int) -> sqlite3.Row | None:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT * FROM auto_reactions WHERE chat_id = ?",
+                (chat_id,),
+            ).fetchone()
+        return row
+
+    def touch_auto_reaction(self, chat_id: int, user_id: int, message_id: int, emoji: str) -> None:
+        now = iso()
+        with self.connect() as db:
+            db.execute(
+                "UPDATE auto_reactions SET last_reacted_at = ? WHERE chat_id = ?",
+                (now, chat_id),
+            )
+            db.execute(
+                """
+                INSERT INTO reaction_logs(chat_id, user_id, message_id, emoji, created_at)
+                VALUES(?, ?, ?, ?, ?)
+                """,
+                (chat_id, user_id, message_id, emoji, now),
+            )

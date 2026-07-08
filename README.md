@@ -11,6 +11,8 @@
 - `/muteme 10` и `/unmuteme` в личных сообщениях.
 - `/read on`, `/read off`, `/read status`.
 - `/readblacklist add`, `/readblacklist remove`, `/readblacklist list`.
+- `/react 👌` ответом на сообщение.
+- `/autoreact on`, `/autoreact off`, `/autoreact status`.
 - `/say текст` одно сообщение в текущий чат.
 - `/saytest 3 текст` только в Saved Messages.
 - SQLite, файл логов, Docker.
@@ -101,8 +103,21 @@ docker logs -f telegram-chat-cleaner
 /read status
 ```
 
+Реакции:
+
+```text
+/react 👌
+/autoreact on
+/autoreact off
+/autoreact status
+```
+
+`/autoreact on` работает только в текущем чате. Userbot ставит реакцию `👌` на входящие сообщения длиннее 40 символов и не чаще одного раза в 30 секунд в этом чате.
+
 ## Ограничения
 
 Telegram может не разрешить удалить некоторые сообщения, особенно в группах без нужных прав или в личных сообщениях “для всех”. В таких случаях userbot пробует удалить хотя бы у себя и пишет ошибку в лог, не падая.
+
+Telegram также может запретить реакции в отдельных чатах. В таком случае userbot запишет ошибку в лог и продолжит работать.
 
 Не используй userbot для спама или массовых рассылок. `/saytest` специально ограничен Saved Messages и максимум тремя сообщениями.

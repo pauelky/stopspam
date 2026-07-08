@@ -10,6 +10,7 @@ from database import Database
 from modules.auto_reader import register_auto_reader
 from modules.cleaner_mute import expire_mutes_loop, register_cleaner_mute
 from modules.logger import setup_logging
+from modules.reactions import register_reactions
 from modules.settings import register_settings
 
 
@@ -35,6 +36,7 @@ async def main() -> None:
 
     register_cleaner_mute(client, db, config)
     register_auto_reader(client, db, config)
+    register_reactions(client, db, config)
     register_settings(client, db, config)
 
     asyncio.create_task(expire_mutes_loop(client, db, config))
