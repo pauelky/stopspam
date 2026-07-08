@@ -61,6 +61,16 @@ python main.py
 
 Deletes the latest N messages in the current chat. Limit: 1-100 messages per command. The command is owner-only.
 
+## Private Flood Guard
+
+```text
+/flood on
+/flood off
+/flood status
+```
+
+Works only in private chats. If a person sends more than 5 messages in 10 seconds, userbot enables auto-delete mute for that private chat. Daily mute ladder: 3 minutes, then 5 minutes, then 10 minutes. The ladder resets once per day.
+
 Первый интерактивный запуск для создания session-файла:
 
 ```bash

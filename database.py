@@ -131,6 +131,35 @@ class Database:
             )
             db.execute(
                 """
+                CREATE TABLE IF NOT EXISTS flood_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER,
+                    user_id INTEGER,
+                    message_id INTEGER,
+                    created_at TEXT
+                )
+                """
+            )
+            db.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_flood_events_lookup
+                ON flood_events(chat_id, user_id, created_at)
+                """
+            )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS flood_penalties (
+                    chat_id INTEGER,
+                    user_id INTEGER,
+                    penalty_count INTEGER DEFAULT 0,
+                    reset_date TEXT,
+                    updated_at TEXT,
+                    PRIMARY KEY(chat_id, user_id)
+                )
+                """
+            )
+            db.execute(
+                """
                 CREATE TABLE IF NOT EXISTS logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     action TEXT,
@@ -144,6 +173,7 @@ class Database:
                 "clean_limit": str(self.clean_limit),
                 "delete_command_messages": "true",
                 "auto_read_enabled": "false",
+                "flood_enabled": "false",
             }
             for key, value in defaults.items():
                 db.execute(
@@ -398,3 +428,71 @@ class Database:
                 """,
                 (chat_id, user_id, message_id, emoji, now),
             )
+
+    def add_flood_event(self, chat_id: int, user_id: int, message_id: int, window_seconds: int) -> int:
+        now = utc_now()
+        cutoff = now.timestamp() - window_seconds
+        cutoff_iso = datetime.fromtimestamp(cutoff, tz=UTC).isoformat()
+        with self.connect() as db:
+            db.execute(
+                """
+                DELETE FROM flood_events
+                WHERE created_at < ?
+                """,
+                (datetime.fromtimestamp(now.timestamp() - 86400, tz=UTC).isoformat(),),
+            )
+            db.execute(
+                """
+                INSERT INTO flood_events(chat_id, user_id, message_id, created_at)
+                VALUES(?, ?, ?, ?)
+                """,
+                (chat_id, user_id, message_id, now.isoformat()),
+            )
+            row = db.execute(
+                """
+                SELECT COUNT(*) AS count
+                FROM flood_events
+                WHERE chat_id = ? AND user_id = ? AND created_at >= ?
+                """,
+                (chat_id, user_id, cutoff_iso),
+            ).fetchone()
+        return int(row["count"]) if row else 0
+
+    def next_flood_penalty(self, chat_id: int, user_id: int) -> tuple[int, int]:
+        today = date.today().isoformat()
+        now = iso()
+        durations = [3, 5, 10]
+        with self.connect() as db:
+            row = db.execute(
+                """
+                SELECT penalty_count, reset_date
+                FROM flood_penalties
+                WHERE chat_id = ? AND user_id = ?
+                """,
+                (chat_id, user_id),
+            ).fetchone()
+            if row is None or row["reset_date"] != today:
+                penalty_count = 1
+                db.execute(
+                    """
+                    INSERT INTO flood_penalties(chat_id, user_id, penalty_count, reset_date, updated_at)
+                    VALUES(?, ?, ?, ?, ?)
+                    ON CONFLICT(chat_id, user_id) DO UPDATE SET
+                        penalty_count = excluded.penalty_count,
+                        reset_date = excluded.reset_date,
+                        updated_at = excluded.updated_at
+                    """,
+                    (chat_id, user_id, penalty_count, today, now),
+                )
+            else:
+                penalty_count = int(row["penalty_count"]) + 1
+                db.execute(
+                    """
+                    UPDATE flood_penalties
+                    SET penalty_count = ?, updated_at = ?
+                    WHERE chat_id = ? AND user_id = ?
+                    """,
+                    (penalty_count, now, chat_id, user_id),
+                )
+        duration = durations[min(penalty_count - 1, len(durations) - 1)]
+        return penalty_count, duration
