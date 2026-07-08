@@ -5,6 +5,7 @@ import logging
 import re
 
 from telethon import TelegramClient, events
+from telethon.errors import FloodWaitError, RPCError
 
 from config import Config
 from database import Database
@@ -13,6 +14,7 @@ from database import Database
 log = logging.getLogger(__name__)
 SAY_RE = re.compile(r"^/say\s+(.+)$", re.IGNORECASE | re.DOTALL)
 SAYTEST_RE = re.compile(r"^/saytest\s+(\d+)\s+(.+)$", re.IGNORECASE | re.DOTALL)
+CLEAN_RE = re.compile(r"^/clean\s+(\d+)$", re.IGNORECASE)
 COMMANDS_TEXT = """Команды userbot:
 
 Мьюты:
@@ -59,6 +61,16 @@ COMMANDS_TEXT_SUFFIX = """
 /say как ты 3 - отправить фразу 3 раза
 
 Для /say последнее число считается количеством повторов. Максимум 10.
+"""
+
+
+CLEAN_HELP_TEXT = """
+
+Чистка чата:
+/clean 10 - удалить последние 10 сообщений в текущем чате
+/clean 20 - удалить последние 20 сообщений в текущем чате
+
+Лимит: от 1 до 100 сообщений за одну команду.
 """
 
 
@@ -139,6 +151,59 @@ async def handle_saytest(event: events.NewMessage.Event, client: TelegramClient,
     db.add_log("saytest", {"count": count, "length": len(text)})
 
 
+async def handle_clean(event: events.NewMessage.Event, db: Database, config: Config) -> None:
+    if not _is_owner(event, config):
+        return
+
+    match = CLEAN_RE.match(event.raw_text or "")
+    if not match:
+        return
+
+    count = int(match.group(1))
+    if count < 1 or count > 100:
+        await event.respond("Для /clean можно указать от 1 до 100 сообщений.")
+        return
+
+    message_ids: list[int] = []
+    try:
+        async for message in event.client.iter_messages(event.chat_id, limit=count):
+            message_ids.append(message.id)
+    except RPCError:
+        log.warning("Could not fetch messages for /clean", exc_info=True)
+        await event.respond("Не получилось получить сообщения для удаления.")
+        return
+
+    if not message_ids:
+        await event.respond("В этом чате нечего удалять.")
+        return
+
+    try:
+        await event.client.delete_messages(event.chat_id, message_ids, revoke=True)
+        deleted_count = len(message_ids)
+    except FloodWaitError as exc:
+        log.warning("Flood wait while cleaning chat: %s seconds", exc.seconds)
+        await event.respond(f"Telegram просит подождать {exc.seconds} сек.")
+        return
+    except RPCError:
+        log.warning("Could not clean messages with revoke=True", exc_info=True)
+        try:
+            await event.client.delete_messages(event.chat_id, message_ids, revoke=False)
+            deleted_count = len(message_ids)
+        except RPCError:
+            log.warning("Could not clean messages with revoke=False", exc_info=True)
+            await event.respond("Не получилось удалить сообщения. Возможно, нет прав.")
+            return
+
+    db.add_log(
+        "clean",
+        {
+            "chat_id": int(event.chat_id or 0),
+            "requested_count": count,
+            "deleted_count": deleted_count,
+        },
+    )
+
+
 async def handle_commands(event: events.NewMessage.Event, config: Config) -> None:
     if not _is_owner(event, config):
         return
@@ -148,7 +213,7 @@ async def handle_commands(event: events.NewMessage.Event, config: Config) -> Non
     if not event.is_private or int(event.chat_id) != config.owner_id:
         await event.respond("Команда /comands работает только в Saved Messages.")
         return
-    await event.respond(COMMANDS_TEXT + COMMANDS_TEXT_SUFFIX)
+    await event.respond(COMMANDS_TEXT + COMMANDS_TEXT_SUFFIX + CLEAN_HELP_TEXT)
 
 
 def register_settings(client: TelegramClient, db: Database, config: Config) -> None:
@@ -163,3 +228,7 @@ def register_settings(client: TelegramClient, db: Database, config: Config) -> N
     @client.on(events.NewMessage(pattern=r"^/saytest(?:\s|$)"))
     async def _saytest(event: events.NewMessage.Event) -> None:
         await handle_saytest(event, client, db, config)
+
+    @client.on(events.NewMessage(pattern=r"^/clean(?:\s|$)"))
+    async def _clean(event: events.NewMessage.Event) -> None:
+        await handle_clean(event, db, config)

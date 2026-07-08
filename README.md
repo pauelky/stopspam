@@ -52,6 +52,15 @@ python main.py
 
 ## Docker
 
+## Clean Command
+
+```text
+/clean 10
+/clean 20
+```
+
+Deletes the latest N messages in the current chat. Limit: 1-100 messages per command. The command is owner-only.
+
 Первый интерактивный запуск для создания session-файла:
 
 ```bash
