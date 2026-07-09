@@ -148,6 +148,23 @@ class Database:
             )
             db.execute(
                 """
+                CREATE TABLE IF NOT EXISTS flood_sticker_events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    chat_id INTEGER,
+                    user_id INTEGER,
+                    message_id INTEGER,
+                    created_at TEXT
+                )
+                """
+            )
+            db.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_flood_sticker_events_lookup
+                ON flood_sticker_events(chat_id, user_id, created_at)
+                """
+            )
+            db.execute(
+                """
                 CREATE TABLE IF NOT EXISTS flood_penalties (
                     chat_id INTEGER,
                     user_id INTEGER,
@@ -155,6 +172,15 @@ class Database:
                     reset_date TEXT,
                     updated_at TEXT,
                     PRIMARY KEY(chat_id, user_id)
+                )
+                """
+            )
+            db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS sticker_block_chats (
+                    chat_id INTEGER PRIMARY KEY,
+                    enabled INTEGER NOT NULL DEFAULT 0,
+                    updated_at TEXT
                 )
                 """
             )
@@ -458,6 +484,42 @@ class Database:
             ).fetchone()
         return int(row["count"]) if row else 0
 
+    def add_sticker_flood_event(
+        self,
+        chat_id: int,
+        user_id: int,
+        message_id: int,
+        window_seconds: int,
+    ) -> list[int]:
+        now = utc_now()
+        cutoff = now.timestamp() - window_seconds
+        cutoff_iso = datetime.fromtimestamp(cutoff, tz=UTC).isoformat()
+        with self.connect() as db:
+            db.execute(
+                """
+                DELETE FROM flood_sticker_events
+                WHERE created_at < ?
+                """,
+                (datetime.fromtimestamp(now.timestamp() - 86400, tz=UTC).isoformat(),),
+            )
+            db.execute(
+                """
+                INSERT INTO flood_sticker_events(chat_id, user_id, message_id, created_at)
+                VALUES(?, ?, ?, ?)
+                """,
+                (chat_id, user_id, message_id, now.isoformat()),
+            )
+            rows = db.execute(
+                """
+                SELECT message_id
+                FROM flood_sticker_events
+                WHERE chat_id = ? AND user_id = ? AND created_at >= ?
+                ORDER BY created_at ASC
+                """,
+                (chat_id, user_id, cutoff_iso),
+            ).fetchall()
+        return [int(row["message_id"]) for row in rows]
+
     def next_flood_penalty(self, chat_id: int, user_id: int) -> tuple[int, int]:
         today = date.today().isoformat()
         now = iso()
@@ -496,3 +558,24 @@ class Database:
                 )
         duration = durations[min(penalty_count - 1, len(durations) - 1)]
         return penalty_count, duration
+
+    def set_sticker_block(self, chat_id: int, enabled: bool) -> None:
+        with self.connect() as db:
+            db.execute(
+                """
+                INSERT INTO sticker_block_chats(chat_id, enabled, updated_at)
+                VALUES(?, ?, ?)
+                ON CONFLICT(chat_id) DO UPDATE SET
+                    enabled = excluded.enabled,
+                    updated_at = excluded.updated_at
+                """,
+                (chat_id, int(enabled), iso()),
+            )
+
+    def sticker_block_enabled(self, chat_id: int) -> bool:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT enabled FROM sticker_block_chats WHERE chat_id = ?",
+                (chat_id,),
+            ).fetchone()
+        return bool(row and row["enabled"])

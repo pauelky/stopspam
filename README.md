@@ -71,6 +71,18 @@ Deletes the latest N messages in the current chat. Limit: 1-100 messages per com
 
 Works only in private chats. If a person sends more than 5 messages in 10 seconds, userbot enables auto-delete mute for that private chat. Daily mute ladder: 3 minutes, then 5 minutes, then 10 minutes. The ladder resets once per day.
 
+Photo and video messages are ignored by the regular flood counter. Stickers have a separate rule: more than 1 sticker in 3 seconds triggers the same 3/5/10 minute mute ladder and deletes the stickers from that 3-second window.
+
+## Sticker Block Per Chat
+
+```text
+/stickers on
+/stickers off
+/stickers status
+```
+
+This setting applies only to the chat where the command was written. When enabled, every incoming sticker in that chat is deleted immediately.
+
 Первый интерактивный запуск для создания session-файла:
 
 ```bash

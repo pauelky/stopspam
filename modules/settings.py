@@ -81,6 +81,21 @@ CLEAN_HELP_TEXT = """
 """
 
 
+FLOOD_STICKER_HELP_TEXT = """
+
+Обновленный антифлуд:
+/flood on - обычный антифлуд в личках, фото и видео не считаются
+/flood off - выключить антифлуд
+/flood status - статус антифлуда
+Стикеры: больше 1 стикера за 3 секунды -> мьют 3/5/10 мин и удаление стикеров из окна
+
+Удаление всех стикеров в текущем чате:
+/stickers on - удалять все входящие стикеры в этом чате
+/stickers off - выключить удаление стикеров в этом чате
+/stickers status - статус для текущего чата
+"""
+
+
 def _is_owner(event: events.NewMessage.Event, config: Config) -> bool:
     return event.sender_id == config.owner_id
 
@@ -220,7 +235,7 @@ async def handle_commands(event: events.NewMessage.Event, config: Config) -> Non
     if not event.is_private or int(event.chat_id) != config.owner_id:
         await event.respond("Команда /comands работает только в Saved Messages.")
         return
-    await event.respond(COMMANDS_TEXT + COMMANDS_TEXT_SUFFIX + CLEAN_HELP_TEXT)
+    await event.respond(COMMANDS_TEXT + COMMANDS_TEXT_SUFFIX + CLEAN_HELP_TEXT + FLOOD_STICKER_HELP_TEXT)
 
 
 def register_settings(client: TelegramClient, db: Database, config: Config) -> None:
